@@ -16,51 +16,47 @@
   };
 
   outputs = { self, flake-utils, devshell, emacs, emacs-ci, nixpkgs }:
-    flake-utils.lib.eachDefaultSystem (system:
-      let
-        overlays = [
-          emacs.overlay
-          emacs-ci.overlay
-          devshell.overlay
-        ];
-        pkgs = import nixpkgs {
-          inherit system;
-          overlays = overlays ++ [
-            # fallback to x86_64 for Emacs versions that don't build on ARM. Rosetta will handle them.
-            (final: prev: (nixpkgs.lib.optionalAttrs (prev.stdenv.system == "aarch64-darwin") {
-              inherit (import nixpkgs {system = "x86_64-darwin"; overlays = overlays;})
-                emacs-25-1 emacs-25-2 emacs-25-3
-                emacs-26-1 emacs-26-2 emacs-26-3
-                emacs-27-1 emacs-27-2;
-            }))
-          ];
-        };
-        multiEmacs = {flavors, wrapper ? (x: x)}: pkgs.runCommandLocal "combined-emacs" {} (
-          nixpkgs.lib.strings.concatStrings ([
-            "mkdir -p $out/bin; "
-          ] ++ (map (f: "ln -s ${(wrapper f)}/bin/emacs $out/bin/emacs-${f.version}; ") flavors)));
-
-      in
-        {
-          devShell =
-            pkgs.devshell.mkShell {
-              packages = [(multiEmacs {flavors = [pkgs.emacs-snapshot];})];
-            };
-
-          packages = {
-            inherit (pkgs)
-              emacs-25-1 emacs-25-2 emacs-25-3
-              emacs-26-1 emacs-26-2 emacs-26-3
-              emacs-27-1 emacs-27-2
-              emacs-snapshot;
+    let
+      composeOverlays = overlays: self: super:
+        nixpkgs.lib.foldl' (nixpkgs.lib.flip nixpkgs.lib.extends) (nixpkgs.lib.const super) overlays self;
+      overlay = composeOverlays [
+        emacs.overlay
+        emacs-ci.overlay
+        devshell.overlay
+        # fallback to x86_64 for Emacs versions that don't build on ARM. Rosetta will handle them.
+        (final: prev: (nixpkgs.lib.optionalAttrs (prev.stdenv.system == "aarch64-darwin") {
+          inherit (import nixpkgs {system = "x86_64-darwin"; overlays = [overlay];})
+            emacs-25-1 emacs-25-2 emacs-25-3
+            emacs-26-1 emacs-26-2 emacs-26-3
+            emacs-27-1 emacs-27-2;
+        }))
+        # export multiEmacs facility
+        (final: prev: {
+          multiEmacs = {
+            flavors,
+              wrapper ? (x: x),
+          }: prev.runCommandLocal "combined-emacs" {} (
+            nixpkgs.lib.strings.concatStrings ([
+              "mkdir -p $out/bin; "
+            ] ++ (map (f: "ln -s ${(wrapper f)}/bin/emacs $out/bin/emacs-${f.version}; ") flavors)));
+        })
+      ];
+    in
+      flake-utils.lib.eachDefaultSystem (system:
+        let
+          pkgs = import nixpkgs {
+            inherit system;
+            overlays = [overlay];
           };
-
-          lib = {
-            inherit multiEmacs;
-            inherit (pkgs)
-              emacsWithPackages
-              emacsWithPackagesFromPackageRequires
-              emacsWithPackagesFromUsePackage;
+        in
+          {
+            devShell =
+              pkgs.devshell.mkShell {
+                packages = [(pkgs.multiEmacs {
+                  flavors = [pkgs.emacs-snapshot];
+                })];
+              };
+          }) // {
+            overlay = overlay;
           };
-        });
 }
