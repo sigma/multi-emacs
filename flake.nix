@@ -17,8 +17,8 @@
 
   outputs = { self, flake-utils, devshell, emacs, emacs-ci, nixpkgs }:
     let
-      composeOverlays = overlays: self: super:
-        nixpkgs.lib.foldl' (nixpkgs.lib.flip nixpkgs.lib.extends) (nixpkgs.lib.const super) overlays self;
+      composeOverlays = overlays: final: prev:
+        nixpkgs.lib.foldl' (nixpkgs.lib.flip nixpkgs.lib.extends) (nixpkgs.lib.const prev) overlays final;
       overlay = composeOverlays [
         emacs.overlay
         emacs-ci.overlay
