@@ -58,5 +58,10 @@
               };
           }) // {
             overlay = overlay;
+
+            defaultTemplate = {
+              path = ./template;
+              description = "nix flake init -t 'github:sigma/multi-emacs'";
+            };
           };
 }
